@@ -7,5 +7,5 @@ flask
 plotly
 dash_bootstrap_components
 scikit-learn
-
+gunicorn
 openpyxl
