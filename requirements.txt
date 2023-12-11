@@ -1,0 +1,11 @@
+dash
+dash-core-components
+dash-html-components
+dash-renderer
+pandas
+flask
+plotly
+dash_bootstrap_components
+scikit-learn
+
+openpyxl
