@@ -53,34 +53,38 @@ dash_app.layout = html.Div([
         },
         multiple=True
     ),
-    dcc.Tabs(id='tabs', children=[
-        dcc.Tab(label='Data Quality Dashboard', children=[
-            html.Div([
-                dcc.Dropdown(
-                    id='column-select-dropdown',
-                    # Initially, options will be empty. They will be set when a file is uploaded.
-                    options=[],
-                    value=None,
-                    style={'width': '50%'}
-                ),
-                html.Div(id='quality-chart-container')  # Container for the interactive chart
-            ]),
-            html.Div(id='data-quality-content'),
-            html.Div(id='chart-container')  # Container for the interactive chart
+    dcc.Loading(
+        id="loading-1",
+        type="default",  # Can choose from "graph", "cube", "circle", "dot", or "default"
+        children=dcc.Tabs(id='tabs', children=[
+                dcc.Tab(label='Data Quality Dashboard', children=[
+                    html.Div([
+                        dcc.Dropdown(
+                            id='column-select-dropdown',
+                            # Initially, options will be empty. They will be set when a file is uploaded.
+                            options=[],
+                            value=None,
+                            style={'width': '50%'}
+                        ),
+                        html.Div(id='quality-chart-container')  # Container for the interactive chart
+                    ]),
+                    html.Div(id='data-quality-content'),
+                    html.Div(id='chart-container')  # Container for the interactive chart
 
-        ]),
-        dcc.Tab(label='Full Data View', children=[
-            html.Div(id='data-view-content')
-        ]),
-        dcc.Tab(label='Data Error', children=[
-            html.Div(id='data-error-content')
-        ]),
-        # Directly add the chart in the tab's content
-        #dcc.Tab(label='Data Quality Over Time', children=[
-         #   html.Div(id='data-quality-time-content', children=create_data_quality_time_chart())
-        #]),
+                ]),
+                dcc.Tab(label='Full Data View', children=[
+                    html.Div(id='data-view-content')
+                ]),
+                dcc.Tab(label='Data Error', children=[
+                    html.Div(id='data-error-content')
+                ]),
+                # Directly add the chart in the tab's content
+                # dcc.Tab(label='Data Quality Over Time', children=[
+                #   html.Div(id='data-quality-time-content', children=create_data_quality_time_chart())
+                # ]),
 
-    ])
+        ])
+    ),
 ])
 
 @dash_app.callback(
