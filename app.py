@@ -3,6 +3,7 @@ import io
 from fileinput import filename
 
 import pandas as pd
+from dash.dash_table import DataTable
 from flask import Flask
 import dash
 import dash_bootstrap_components as dbc
@@ -28,7 +29,7 @@ def create_data_quality_time_chart():
     df['date'] = pd.to_datetime(df['date'])
 
     # Create a line chart
-    fig = px.line(df, x='date', y='quality', title='Data Quality Over Time', markers=True)
+    fig = px.line(df, x='date', y='quality', title='Data Quality Over Time (With Dummy Data)', markers=True)
     # Set more detailed date information in x-axis
     fig.update_xaxes(tickformat="%d %b %Y")
     fig.update_layout(xaxis_title='Date', yaxis_title='Data Quality (%)')
@@ -54,23 +55,38 @@ dash_app.layout = html.Div([
     ),
     dcc.Tabs(id='tabs', children=[
         dcc.Tab(label='Data Quality Dashboard', children=[
+            html.Div([
+                dcc.Dropdown(
+                    id='column-select-dropdown',
+                    # Initially, options will be empty. They will be set when a file is uploaded.
+                    options=[],
+                    value=None,
+                    style={'width': '50%'}
+                ),
+                html.Div(id='quality-chart-container')  # Container for the interactive chart
+            ]),
             html.Div(id='data-quality-content'),
             html.Div(id='chart-container')  # Container for the interactive chart
+
         ]),
-        dcc.Tab(label='Data View', children=[
+        dcc.Tab(label='Full Data View', children=[
             html.Div(id='data-view-content')
         ]),
-        # Directly add the chart in the tab's content
-        dcc.Tab(label='Data Quality Over Time', children=[
-            html.Div(id='data-quality-time-content', children=create_data_quality_time_chart())
+        dcc.Tab(label='Data Error', children=[
+            html.Div(id='data-error-content')
         ]),
+        # Directly add the chart in the tab's content
+        #dcc.Tab(label='Data Quality Over Time', children=[
+         #   html.Div(id='data-quality-time-content', children=create_data_quality_time_chart())
+        #]),
 
     ])
 ])
 
 @dash_app.callback(
     [Output('data-quality-content', 'children'),
-     Output('data-view-content', 'children')],
+     Output('data-view-content', 'children'),
+     Output('data-error-content', 'children')],
     [Input('upload-data', 'contents')],
     [State('upload-data', 'filename')]
 )
@@ -78,24 +94,27 @@ def update_output(list_of_contents, list_of_names):
     if list_of_contents is not None:
         children_quality = []
         children_view = []
+        children_error = []
         for contents, name in zip(list_of_contents, list_of_names):
             df = parse_contents(contents, name)
             if df is not None:
                 # Processing for Data Quality Dashboard
                 gauge_chart = compute_data_quality(df, name)
-                column_qualities = column_quality_analysis(df)
-                column_chart = create_column_quality_chart(column_qualities)
-                children_quality.extend([gauge_chart, column_chart])
+                children_quality.append(gauge_chart)  # Removed column chart logic
 
                 # Processing for Data View
-                highlighted_data = highlight_bad_data(df)
+                data_table = highlight_bad_data(df)
                 children_view.append(html.H5(f'Data View for {name}'))
-                children_view.append(highlighted_data)
+                children_view.append(data_table)
 
-        return children_quality, children_view
+                # Processing for Data Error tab
+                bad_data_table = display_bad_data(df)
+                children_error.append(html.H5(f'Bad Data for {name}'))
+                children_error.append(bad_data_table)
 
-    return None, None
+        return children_quality, children_view, children_error
 
+    return None, None, None
 
 def parse_contents(contents, filename):
     content_type, content_string = contents.split(',')
@@ -111,76 +130,168 @@ def parse_contents(contents, filename):
 
 import plotly.graph_objs as go
 
+import plotly.graph_objs as go
+
 def compute_data_quality(df, filename):
-    if "Rückmelder" not in df.columns:
-        return html.Div("Column 'Rückmelder' not found", style={'color': 'red'})
+    if "Zuständiger Bearbeiter" not in df.columns or "Rückgemeldete Gutmenge in Lagereinheit" not in df.columns or "Bemerkungen" not in df.columns:
+        return html.Div(f"Required columns not found in {filename}", style={'color': 'red'})
+
+    condition1 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Rückgemeldete Gutmenge in Lagereinheit"] > 0)
+    condition2 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Bemerkungen"].str.contains("BDE:", na=False))
+    bad_data_rows = df[condition1 | condition2]
 
     total_rows = len(df)
-    good_data_rows = len(df[df["Rückmelder"] != "tmm"])
-
-    if total_rows == 0:
-        return html.Div("No data available", style={'color': 'red'})
-
-    data_quality_percentage = (good_data_rows / total_rows) * 100
+    good_data_rows = total_rows - len(bad_data_rows)
+    data_quality_percentage = (good_data_rows / total_rows) * 100 if total_rows > 0 else 0
     quality_rounded = round(data_quality_percentage, 2)
 
-    # Gauge chart component
     fig = go.Figure(go.Indicator(
-        mode="gauge+number",
+        mode="gauge+number+delta",  # Include delta for change indication
         value=quality_rounded,
-        title={'text': f"Data Quality for {filename}"},
-        gauge={'axis': {'range': [0, 100]}}
+        number={'suffix': "%", 'font': {'size': 20}},  # Show percent symbol
+        title={
+            'text': f"Data Quality for {filename} (%)",
+            'font': {'size': 24}  # Increase the font size of the title
+        },
+        delta={'reference': 100},  # Set reference for delta
+        gauge={
+            'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
+            'bar': {'color': "darkblue"},
+            'steps': [
+                {'range': [0, 50], 'color': 'red'},
+                {'range': [50, 75], 'color': 'yellow'},
+                {'range': [75, 100], 'color': 'green'}
+            ],  # Color steps for different ranges
+            'threshold': {
+                'line': {'color': "red", 'width': 4},
+                'thickness': 0.75,
+                'value': 90
+            }  # Threshold for indicating target quality
+        }
     ))
+
+    fig.update_layout(
+        paper_bgcolor="lavender",  # Set background color
+        font={'color': "darkblue", 'family': "Arial"}  # Set font style
+    )
 
     return dcc.Graph(figure=fig)
 
 
-
 def highlight_bad_data(df):
-    # Replace with your logic for highlighting bad data
-    return html.Div(str(df))  # Placeholder for displaying DataFrame
+    # Define the bad data conditions
+    condition1 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Rückgemeldete Gutmenge in Lagereinheit"] > 0)
+    condition2 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Bemerkungen"].str.contains("BDE:", na=False))
+
+    # Apply conditions to mark bad rows
+    df['is_bad'] = condition1 | condition2
+
+    # Conditional formatting for bad data rows
+    style = [{
+        'if': {
+            'filter_query': '{is_bad} eq True',
+        },
+        'backgroundColor': '#FF4136',  # Red color for bad data
+        'color': 'white'
+    }]
+
+    # Create DataTable without the 'is_bad' column
+    table = DataTable(
+        id='table',
+        columns=[{"name": i, "id": i} for i in df.columns if i != 'is_bad'],
+        data=df.to_dict('records'),
+        style_table={'overflowX': 'auto'},
+        page_size=10,
+        filter_action="native",
+        sort_action="native",
+        export_headers='display',
+        export_format='csv',
+        style_data_conditional=style
+    )
+
+    # Remove the 'is_bad' column from df to avoid affecting other functions
+    df.drop('is_bad', axis=1, inplace=True)
+
+    return table
+
+    return dash_table.DataTable(
+        df.to_dict('records'),
+        [{"name": i, "id": i} for i in df.columns],
+        style_data_conditional=style
+    )
 
 
 import plotly.express as px
 
-def create_interactive_chart(df):
-    # Modify this to match your data's columns
-    fig = px.bar(df, x="YourColumn", y="AnotherColumn")  # Replace 'YourColumn' and 'AnotherColumn' with actual column names
-    return fig
 
 
 
-# Callback to update the chart
+def display_bad_data(df):
+    # Define the bad data conditions
+    condition1 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Rückgemeldete Gutmenge in Lagereinheit"] > 0)
+    condition2 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Bemerkungen"].str.contains("BDE:", na=False))
+
+    # Filter out the bad data
+    bad_data_df = df[condition1 | condition2]
+
+    return DataTable(
+        id='bad-data-table',
+        columns=[{"name": i, "id": i} for i in bad_data_df.columns],
+        data=bad_data_df.to_dict('records'),
+        style_table={'overflowX': 'auto'},  # Handle extra-wide tables
+        page_size=10,  # Number of rows per page
+        filter_action="native",  # Allow filtering of data by user
+        sort_action="native",    # Allow sorting of data by user
+        export_format='csv',  # Enable exporting of data
+        export_headers='display',  # Use displayed headers in export
+    )
+
+
+from dash.dependencies import Input, Output
+
+
+# Callback to update dropdown options based on uploaded file
 @dash_app.callback(
-    Output('chart-container', 'children'),
+    Output('column-select-dropdown', 'options'),
     [Input('upload-data', 'contents')],
     [State('upload-data', 'filename')]
 )
-def update_chart(list_of_contents, list_of_names):
+def update_dropdown_options(list_of_contents, list_of_names):
     if list_of_contents is not None:
         for contents, name in zip(list_of_contents, list_of_names):
             df = parse_contents(contents, name)
             if df is not None:
-                fig = create_interactive_chart(df)
+                # Create options from dataframe columns
+                return [{'label': col, 'value': col} for col in df.columns]
+    # Return empty options if no file is uploaded
+    return []
+
+
+@dash_app.callback(
+    Output('quality-chart-container', 'children'),
+    [Input('column-select-dropdown', 'value'),
+     Input('upload-data', 'contents')],
+    [State('upload-data', 'filename')]
+)
+def update_quality_chart(selected_column, list_of_contents, list_of_names):
+    if selected_column is not None and list_of_contents is not None:
+        for contents, name in zip(list_of_contents, list_of_names):
+            df = parse_contents(contents, name)
+            if df is not None and selected_column in df.columns:
+                # Define bad data conditions (as per highlight_bad_data function)
+                condition1 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Rückgemeldete Gutmenge in Lagereinheit"] > 0)
+                condition2 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Bemerkungen"].str.contains("BDE:", na=False))
+                df['is_bad'] = condition1 | condition2
+
+                # Group by the selected column and count bad data
+                bad_data_count = df.groupby(selected_column)['is_bad'].sum().reset_index()
+                bad_data_count.columns = ['Value', 'Bad Data Count']
+
+                # Create the plot
+                fig = px.bar(bad_data_count, x='Value', y='Bad Data Count', title=f'Bad Data Count by {selected_column}')
                 return dcc.Graph(figure=fig)
 
-    return html.Div("Upload a file to view the chart")
-
-
-def column_quality_analysis(df):
-    column_qualities = []
-    for col in df.columns:
-        total_rows = len(df)
-        good_data_rows = len(df[df[col] != "tmm"])
-        column_quality = (good_data_rows / total_rows) * 100 if total_rows > 0 else 0
-        column_qualities.append((col, column_quality))
-    return column_qualities
-
-def create_column_quality_chart(column_qualities):
-    columns, qualities = zip(*column_qualities)
-    fig = px.bar(x=columns, y=qualities, labels={'x': 'Column', 'y': 'Data Quality (%)'})
-    fig.update_layout(title_text='Column-Wise Data Quality')
-    return dcc.Graph(figure=fig)
+    return html.Div("Select a column and upload a file to view data quality.")
 
 
 # Run the app
