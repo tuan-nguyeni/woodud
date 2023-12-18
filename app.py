@@ -1,25 +1,26 @@
-#app.py
+# app.py
 
 import base64
 import io
-from fileinput import filename
 
-import pandas as pd
-from dash.dash_table import DataTable
-from flask import Flask
 import dash
 import dash_bootstrap_components as dbc
-from dash import dcc, html, Input, Output, State
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objs as go
+from dash import dcc, html, State
+from dash.dash_table import DataTable
+from dash.dependencies import Input, Output
+from flask import Flask
 
 from constants import *
+from layout import create_layout
 
 app = Flask(__name__)
 dash_app = dash.Dash(__name__, server=app, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
 server = dash_app.server  # Expose the Flask server instance for Gunicorn
 
-import plotly.express as px
-from datetime import datetime
 
 def create_data_quality_time_chart():
     # Mock data
@@ -41,46 +42,7 @@ def create_data_quality_time_chart():
     return dcc.Graph(figure=fig)
 
 # Dash layout
-dash_app.layout = html.Div([
-    dcc.Upload(
-        id='upload-data',
-        children=html.Div([LABEL_SELECT_FILES, html.A('Select Files')]),
-        style=UPLOAD_STYLE,
-        multiple=True
-    ),
-    dcc.Loading(
-        id="loading-1",
-        type="default",  # Can choose from "graph", "cube", "circle", "dot", or "default"
-        children=dcc.Tabs(id='tabs', children=[
-                dcc.Tab(label=LABEL_DATA_QUALITY_DASHBOARD, children=[
-                    html.Div([
-                        dcc.Dropdown(
-                            id='column-select-dropdown',
-                            # Initially, options will be empty. They will be set when a file is uploaded.
-                            options=[],
-                            value=None,
-                            style={'width': '50%'}
-                        ),
-                        html.Div(id='quality-chart-container')  # Container for the interactive chart
-                    ]),
-                    html.Div(id='data-quality-content'),
-                    html.Div(id='chart-container')  # Container for the interactive chart
-
-                ]),
-                dcc.Tab(label=LABEL_FULL_DATA_VIEW, children=[
-                    html.Div(id='data-view-content')
-                ]),
-                dcc.Tab(label=LABEL_DATA_ERROR, children=[
-                    html.Div(id='data-error-content')
-                ]),
-                # Directly add the chart in the tab's content
-                # dcc.Tab(label='Data Quality Over Time', children=[
-                #   html.Div(id='data-quality-time-content', children=create_data_quality_time_chart())
-                # ]),
-
-        ])
-    ),
-])
+dash_app.layout = create_layout()
 
 @dash_app.callback(
     [Output('data-quality-content', 'children'),
@@ -127,9 +89,6 @@ def parse_contents(contents, filename):
         print(e)
         return None
 
-import plotly.graph_objs as go
-
-import plotly.graph_objs as go
 
 def compute_data_quality(df, filename):
     try:
@@ -213,11 +172,6 @@ def highlight_bad_data(df):
     return table
 
 
-import plotly.express as px
-
-
-
-
 def display_bad_data(df):
     try:
         # Use the identify_bad_data function to identify bad data
@@ -241,9 +195,6 @@ def display_bad_data(df):
         export_format='csv',  # Enable exporting of data
         export_headers='display',  # Use displayed headers in export
     )
-
-
-from dash.dependencies import Input, Output
 
 
 # Callback to update dropdown options based on uploaded file
