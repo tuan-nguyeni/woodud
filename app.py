@@ -297,7 +297,6 @@ def update_quality_chart(selected_column, list_of_contents, list_of_names):
 
     return html.Div("Select a column and upload a file to view data quality.")
 
-
 # Run the app
 if __name__ == '__main__':
     app.run(debug=True)
