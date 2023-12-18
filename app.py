@@ -137,15 +137,14 @@ import plotly.graph_objs as go
 import plotly.graph_objs as go
 
 def compute_data_quality(df, filename):
-    if "Zuständiger Bearbeiter" not in df.columns or "Rückgemeldete Gutmenge in Lagereinheit" not in df.columns or "Bemerkungen" not in df.columns:
-        return html.Div(f"Required columns not found in {filename}", style={'color': 'red'})
-
-    condition1 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Rückgemeldete Gutmenge in Lagereinheit"] > 0)
-    condition2 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Bemerkungen"].str.contains("BDE:", na=False))
-    bad_data_rows = df[condition1 | condition2]
+    try:
+        df = identify_bad_data(df)
+    except ValueError as e:
+        return html.Div(str(e), style={'color': 'red'})
 
     total_rows = len(df)
-    good_data_rows = total_rows - len(bad_data_rows)
+    bad_data_rows = len(df[df['is_bad']])
+    good_data_rows = total_rows - bad_data_rows
     data_quality_percentage = (good_data_rows / total_rows) * 100 if total_rows > 0 else 0
     quality_rounded = round(data_quality_percentage, 2)
 
@@ -183,12 +182,12 @@ def compute_data_quality(df, filename):
 
 
 def highlight_bad_data(df):
-    # Define the bad data conditions
-    condition1 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Rückgemeldete Gutmenge in Lagereinheit"] > 0)
-    condition2 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Bemerkungen"].str.contains("BDE:", na=False))
-
-    # Apply conditions to mark bad rows
-    df['is_bad'] = condition1 | condition2
+    try:
+        # Use the identify_bad_data function to mark bad data
+        df = identify_bad_data(df)
+    except ValueError as e:
+        # Handle the case where required columns are not found
+        return html.Div(str(e), style={'color': 'red'})
 
     # Conditional formatting for bad data rows
     style = [{
@@ -199,7 +198,7 @@ def highlight_bad_data(df):
         'color': 'white'
     }]
 
-    # Create DataTable without the 'is_bad' column
+    # Create DataTable with the necessary columns except 'is_bad'
     table = DataTable(
         id='table',
         columns=[{"name": i, "id": i} for i in df.columns if i != 'is_bad'],
@@ -218,12 +217,6 @@ def highlight_bad_data(df):
 
     return table
 
-    return dash_table.DataTable(
-        df.to_dict('records'),
-        [{"name": i, "id": i} for i in df.columns],
-        style_data_conditional=style
-    )
-
 
 import plotly.express as px
 
@@ -231,16 +224,20 @@ import plotly.express as px
 
 
 def display_bad_data(df):
-    # Define the bad data conditions
-    condition1 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Rückgemeldete Gutmenge in Lagereinheit"] > 0)
-    condition2 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Bemerkungen"].str.contains("BDE:", na=False))
+    try:
+        # Use the identify_bad_data function to identify bad data
+        df_with_bad_data_flag = identify_bad_data(df)
+    except ValueError as e:
+        # Handle the case where required columns are not found
+        return html.Div(str(e), style={'color': 'red'})
 
     # Filter out the bad data
-    bad_data_df = df[condition1 | condition2]
+    bad_data_df = df_with_bad_data_flag[df_with_bad_data_flag['is_bad'] == True]
 
+    # Create a DataTable for displaying bad data
     return DataTable(
         id='bad-data-table',
-        columns=[{"name": i, "id": i} for i in bad_data_df.columns],
+        columns=[{"name": i, "id": i} for i in bad_data_df.columns if i != 'is_bad'],  # Exclude 'is_bad' column
         data=bad_data_df.to_dict('records'),
         style_table={'overflowX': 'auto'},  # Handle extra-wide tables
         page_size=10,  # Number of rows per page
@@ -282,13 +279,15 @@ def update_quality_chart(selected_column, list_of_contents, list_of_names):
         for contents, name in zip(list_of_contents, list_of_names):
             df = parse_contents(contents, name)
             if df is not None and selected_column in df.columns:
-                # Define bad data conditions (as per highlight_bad_data function)
-                condition1 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Rückgemeldete Gutmenge in Lagereinheit"] > 0)
-                condition2 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Bemerkungen"].str.contains("BDE:", na=False))
-                df['is_bad'] = condition1 | condition2
+                try:
+                    # Use identify_bad_data function
+                    df_with_bad_data_flag = identify_bad_data(df)
+                except ValueError as e:
+                    # Handle the case where required columns are not found
+                    return html.Div(str(e), style={'color': 'red'})
 
                 # Group by the selected column and count bad data
-                bad_data_count = df.groupby(selected_column)['is_bad'].sum().reset_index()
+                bad_data_count = df_with_bad_data_flag.groupby(selected_column)['is_bad'].sum().reset_index()
                 bad_data_count.columns = ['Value', 'Bad Data Count']
 
                 # Create the plot
@@ -296,6 +295,25 @@ def update_quality_chart(selected_column, list_of_contents, list_of_names):
                 return dcc.Graph(figure=fig)
 
     return html.Div("Select a column and upload a file to view data quality.")
+
+
+def identify_bad_data(df):
+    """
+    Identifies bad data based on specific conditions.
+    """
+    if "Zuständiger Bearbeiter" not in df.columns or \
+            "Rückgemeldete Gutmenge in Lagereinheit" not in df.columns or \
+            "Bemerkungen" not in df.columns:
+        raise ValueError("Required columns not found.")
+
+    # Define the bad data conditions
+    condition1 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Rückgemeldete Gutmenge in Lagereinheit"] > 0)
+    condition2 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Bemerkungen"].str.contains("BDE:", na=False))
+
+    # Create a new column 'is_bad' to mark bad data rows
+    df['is_bad'] = condition1 | condition2
+    return df
+
 
 # Run the app
 if __name__ == '__main__':
