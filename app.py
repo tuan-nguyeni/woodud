@@ -1,3 +1,5 @@
+#app.py
+
 import base64
 import io
 from fileinput import filename
@@ -8,6 +10,8 @@ from flask import Flask
 import dash
 import dash_bootstrap_components as dbc
 from dash import dcc, html, Input, Output, State
+
+from constants import *
 
 app = Flask(__name__)
 dash_app = dash.Dash(__name__, server=app, external_stylesheets=[dbc.themes.BOOTSTRAP])
@@ -40,24 +44,15 @@ def create_data_quality_time_chart():
 dash_app.layout = html.Div([
     dcc.Upload(
         id='upload-data',
-        children=html.Div(['Drag and Drop or ', html.A('Select Files')]),
-        style={
-            'width': '100%',
-            'height': '60px',
-            'lineHeight': '60px',
-            'borderWidth': '1px',
-            'borderStyle': 'dashed',
-            'borderRadius': '5px',
-            'textAlign': 'center',
-            'margin': '10px'
-        },
+        children=html.Div([LABEL_SELECT_FILES, html.A('Select Files')]),
+        style=UPLOAD_STYLE,
         multiple=True
     ),
     dcc.Loading(
         id="loading-1",
         type="default",  # Can choose from "graph", "cube", "circle", "dot", or "default"
         children=dcc.Tabs(id='tabs', children=[
-                dcc.Tab(label='Data Quality Dashboard', children=[
+                dcc.Tab(label=LABEL_DATA_QUALITY_DASHBOARD, children=[
                     html.Div([
                         dcc.Dropdown(
                             id='column-select-dropdown',
@@ -72,10 +67,10 @@ dash_app.layout = html.Div([
                     html.Div(id='chart-container')  # Container for the interactive chart
 
                 ]),
-                dcc.Tab(label='Full Data View', children=[
+                dcc.Tab(label=LABEL_FULL_DATA_VIEW, children=[
                     html.Div(id='data-view-content')
                 ]),
-                dcc.Tab(label='Data Error', children=[
+                dcc.Tab(label=LABEL_DATA_ERROR, children=[
                     html.Div(id='data-error-content')
                 ]),
                 # Directly add the chart in the tab's content
@@ -301,14 +296,16 @@ def identify_bad_data(df):
     """
     Identifies bad data based on specific conditions.
     """
-    if "Zuständiger Bearbeiter" not in df.columns or \
-            "Rückgemeldete Gutmenge in Lagereinheit" not in df.columns or \
-            "Bemerkungen" not in df.columns:
-        raise ValueError("Required columns not found.")
+    if COLUMN_RESPONSIBLE not in df.columns or \
+            COLUMN_GOODS_QUANTITY not in df.columns or \
+            COLUMN_REMARKS not in df.columns:
+        raise ValueError(ERROR_REQUIRED_COLUMNS_NOT_FOUND)
 
-    # Define the bad data conditions
-    condition1 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Rückgemeldete Gutmenge in Lagereinheit"] > 0)
-    condition2 = (df["Zuständiger Bearbeiter"] == "tmm") & (df["Bemerkungen"].str.contains("BDE:", na=False))
+    # Define the bad data conditions using constants
+    condition1 = (df[COLUMN_RESPONSIBLE] == VALUE_RESPONSIBLE_TMM) & \
+                 (df[COLUMN_GOODS_QUANTITY] > 0)
+    condition2 = (df[COLUMN_RESPONSIBLE] == VALUE_RESPONSIBLE_TMM) & \
+                 (df[COLUMN_REMARKS].str.contains(VALUE_CONTAINS_BDE, na=False))
 
     # Create a new column 'is_bad' to mark bad data rows
     df['is_bad'] = condition1 | condition2
