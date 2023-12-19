@@ -1,6 +1,5 @@
 # app.py
 
-import base64
 import io
 
 import dash
@@ -15,6 +14,9 @@ from flask import Flask
 
 from constants import *
 from layout import create_layout
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 dash_app = dash.Dash(__name__, server=app, external_stylesheets=[dbc.themes.BOOTSTRAP])

@@ -11,6 +11,7 @@ def create_layout():
             style=UPLOAD_STYLE,
             multiple=True
         ),
+        html.Div(id='output-container'),
         dcc.Loading(
             id="loading-1",
             type=LABEL_LOADING_TYPE_DEFAULT,

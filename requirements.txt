@@ -9,3 +9,5 @@ dash_bootstrap_components
 scikit-learn
 gunicorn
 openpyxl
+boto3
+python-dotenv
